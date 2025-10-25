@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -11,11 +11,19 @@ from sqlalchemy.sql import func
 from pydantic import BaseModel, Field
 
 # --- Configuration ---
-# यह लाइन बदली गई है ताकि Render की स्थायी डिस्क का उपयोग हो सके
-DATABASE_URL = "sqlite:////var/data/remote_management.db"
+# Render के Environment Variable से डेटाबेस URL प्राप्त करें
+# यह URL Neon या किसी अन्य PostgreSQL सेवा से मिलेगा
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# --- Database Setup ---
+# PostgreSQL के लिए connect_args की आवश्यकता नहीं है
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+
 # --- Database Models (Schema) ---
+# (इनमें कोई बदलाव नहीं है)
 
 class Device(Base):
     __tablename__ = "devices"
@@ -58,6 +66,7 @@ class GlobalSetting(Base):
     setting_value = Column(Text)
 
 # --- Pydantic Schemas (Request/Response Models) ---
+# (इनमें कोई बदलाव नहीं है)
 
 class DeviceRegisterRequest(BaseModel):
     device_id: str
@@ -100,10 +109,7 @@ class SMSLogRequest(BaseModel):
     sender: str
     message_body: str
 
-# --- Database Setup ---
-
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# --- Database Helper Functions ---
 
 def create_db_and_tables():
     Base.metadata.create_all(bind=engine)
@@ -128,6 +134,7 @@ def on_startup():
     create_db_and_tables()
 
 # --- API Endpoints ---
+# (इनमें कोई बदलाव नहीं है)
 
 def get_setting(db, key):
     setting = db.query(GlobalSetting).filter(GlobalSetting.setting_key == key).first()
@@ -150,6 +157,8 @@ def register_device(request: DeviceRegisterRequest, db=Depends(get_db)):
     device = db.query(Device).filter(Device.device_id == request.device_id).first()
     if device:
         device.last_seen = now
+        device.battery_level = request.battery_level
+        device.os_version = request.os_version
     else:
         device = Device(
             device_id=request.device_id,
@@ -306,6 +315,7 @@ def delete_sms(sms_id: int, db=Depends(get_db)):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    # इस HTML में कोई बदलाव नहीं है
     return """
     <!DOCTYPE html>
     <html>
@@ -335,7 +345,7 @@ async def root():
                 <p><strong>Base URL:</strong> <span id="base-url">...</span></p>
             </div>
             <p style="text-align: center; margin-top: 30px; font-size: 0.9em; color: #6c757d;">
-                This is the minimal status page requested by the user.
+                This is the minimal status page.
             </p>
         </div>
         <script>
@@ -366,4 +376,4 @@ async def root():
     </body>
     </html>
     """
-    
+
